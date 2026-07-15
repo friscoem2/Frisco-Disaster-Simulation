@@ -12,6 +12,7 @@ const state = {
   map: null,
   cityLayer: null,
   disasterLayer: null,
+  exerciseBounds: null,
   poiLayers: new Map(),
   locationMarker: null,
   accuracyCircle: null,
@@ -383,48 +384,114 @@ async function respondToBriefing(responseValue) {
 async function enterMap() {
   showOnly('map-screen');
   if (!state.map) await initializeMap();
-  setTimeout(() => state.map?.invalidateSize(), 80);
+  setTimeout(() => {
+    state.map?.invalidateSize({ pan: false });
+    if (state.exerciseBounds?.isValid()) focusExerciseArea(false);
+  }, 100);
   renderReadings();
   startLocationWatch();
 }
 
 async function initializeMap() {
   state.map = L.map('map', { zoomControl: false, preferCanvas: true, minZoom: 10, maxZoom: 20 });
+  createMapPanes();
   L.control.zoom({ position: 'bottomleft' }).addTo(state.map);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 20,
     attribution: '&copy; OpenStreetMap contributors',
   }).addTo(state.map);
 
+  // Let the now-visible map container finish layout before calculating bounds.
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  state.map.invalidateSize({ pan: false });
+
   try {
     const cityResponse = await fetch('data/frisco-city-limits.geojson', { cache: 'force-cache' });
     if (!cityResponse.ok) throw new Error(`HTTP ${cityResponse.status}`);
     const cityGeoJson = await cityResponse.json();
     state.cityLayer = L.geoJSON(cityGeoJson, {
-      style: { color: '#1E5238', weight: 3, opacity: .85, fillOpacity: 0 },
+      pane: 'cityBoundaryPane',
+      interactive: false,
+      style: { color: '#1E5238', weight: 3, opacity: .75, fillOpacity: 0 },
     }).addTo(state.map);
   } catch (error) {
     console.warn('Frisco boundary could not be loaded.', error);
   }
 
+  renderExerciseLayers();
+  focusExerciseArea(false);
+}
+
+function createMapPanes() {
+  const paneSettings = [
+    ['cityBoundaryPane', 390, 'none'],
+    ['disasterAreaPane', 410, 'auto'],
+    ['poiRadiusPane', 420, 'auto'],
+    ['poiMarkerPane', 650, 'auto'],
+  ];
+  paneSettings.forEach(([name, zIndex, pointerEvents]) => {
+    const pane = state.map.getPane(name) || state.map.createPane(name);
+    pane.style.zIndex = String(zIndex);
+    pane.style.pointerEvents = pointerEvents;
+  });
+}
+
+function renderExerciseLayers() {
+  if (!state.scenario?.disasterArea) throw new Error('The scenario did not include a disaster-area polygon.');
+  if (!Array.isArray(state.scenario?.pois) || !state.scenario.pois.length) throw new Error('The scenario did not include any active POIs.');
+
   state.disasterLayer = L.geoJSON(state.scenario.disasterArea, {
-    style: { color: '#b91c1c', weight: 3, dashArray: '8 6', fillColor: '#dc2626', fillOpacity: .18 },
+    pane: 'disasterAreaPane',
+    style: {
+      pane: 'disasterAreaPane', color: '#991b1b', weight: 4, opacity: 1,
+      dashArray: '9 6', fillColor: '#ef4444', fillOpacity: .24,
+    },
   }).addTo(state.map);
 
+  const disasterBounds = state.disasterLayer.getBounds();
+  if (!disasterBounds?.isValid()) throw new Error('The disaster-area polygon did not produce valid map bounds.');
+
+  state.exerciseBounds = L.latLngBounds(disasterBounds);
   state.scenario.pois.forEach(addPoiToMap);
-  const bounds = state.cityLayer?.getBounds()?.isValid() ? state.cityLayer.getBounds() : state.disasterLayer.getBounds();
-  if (bounds?.isValid()) state.map.fitBounds(bounds.pad(.04));
-  else state.map.setView([33.1507, -96.8236], 12);
+  state.poiLayers.forEach(({ circle }) => {
+    const circleBounds = circle.getBounds();
+    if (circleBounds?.isValid()) state.exerciseBounds.extend(circleBounds);
+  });
+
+  state.disasterLayer.bringToFront?.();
+  console.info('Exercise map layers rendered.', {
+    poiCount: state.poiLayers.size,
+    disasterBounds: disasterBounds.toBBoxString(),
+    exerciseBounds: state.exerciseBounds.toBBoxString(),
+  });
 }
 
 function addPoiToMap(poi) {
   const circle = L.circle([poi.latitude, poi.longitude], {
+    pane: 'poiRadiusPane',
     radius: poi.radiusMeters,
-    color: '#d97706', weight: 2, dashArray: '5 5', fillColor: '#fbbf24', fillOpacity: .12,
+    color: '#b45309', weight: 3, opacity: 1, dashArray: '6 5', fillColor: '#fbbf24', fillOpacity: .2,
   }).addTo(state.map);
-  const marker = L.marker([poi.latitude, poi.longitude], { icon: poiIcon(Boolean(state.readings[poi.number])) }).addTo(state.map);
+  const marker = L.marker([poi.latitude, poi.longitude], {
+    pane: 'poiMarkerPane',
+    icon: poiIcon(Boolean(state.readings[poi.number])),
+    zIndexOffset: 500,
+  }).addTo(state.map);
   marker.bindPopup(`<div class="poi-popup-title">${escapeHtml(poi.title)}</div><div class="poi-popup-sub">POI ${escapeHtml(poi.number)} • Enter the circle and use the Geiger counter.</div>`);
   state.poiLayers.set(String(poi.number), { marker, circle });
+}
+
+function focusExerciseArea(animate = true) {
+  if (!state.map || !state.exerciseBounds?.isValid()) {
+    showToast('Exercise area is not available on the map.');
+    return;
+  }
+  state.map.invalidateSize({ pan: false });
+  state.map.fitBounds(state.exerciseBounds.pad(.18), {
+    animate,
+    duration: animate ? .45 : 0,
+    maxZoom: 17,
+  });
 }
 
 function poiIcon(complete) {
@@ -441,6 +508,7 @@ function resetMap() {
   state.map = null;
   state.cityLayer = null;
   state.disasterLayer = null;
+  state.exerciseBounds = null;
   state.poiLayers.clear();
   state.locationMarker = null;
   state.accuracyCircle = null;
