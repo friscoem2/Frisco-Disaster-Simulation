@@ -58,7 +58,10 @@
         <div class="header-kicker">Incident briefing</div>
         <div class="header-title">Frisco CERT Exercise</div>
       </div>
-      <button class="header-logout" type="button" onclick="logout()">Log out</button>
+      <div class="header-actions">
+        <button id="briefing-back-button" class="header-return hidden" type="button" onclick="returnToMapFromBriefing()">Back to map</button>
+        <button class="header-logout" type="button" onclick="logout()">Log out</button>
+      </div>
     </header>
     <div class="briefing-scroll">
       <article class="briefing-card">
@@ -89,7 +92,7 @@
 
   <section id="map-screen" class="screen hidden">
     <header class="map-header">
-      <button class="round-header-button" type="button" onclick="toggleBriefingReview()" aria-label="Review briefing">i</button>
+      <button class="round-header-button" type="button" onclick="showBriefingFromMap()" aria-label="Review full briefing">i</button>
       <div class="map-header-copy">
         <div id="map-title" class="map-title">CERT Disaster Simulation</div>
         <div id="map-user" class="map-user">Member</div>
