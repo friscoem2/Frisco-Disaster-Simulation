@@ -38,7 +38,7 @@ button,input{font:inherit}button{cursor:pointer}.hidden{display:none!important}
 .app-header,.map-header{height:84px;padding:env(safe-area-inset-top) 14px 0;background:var(--cert-green);color:#fff;display:flex;align-items:center;gap:11px;position:relative;z-index:500;box-shadow:0 2px 10px rgba(0,0,0,.28)}
 .app-header::after,.map-header::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--cert-accent)}
 .app-header img{height:48px;width:auto}.header-kicker{font:700 10px var(--font-body);text-transform:uppercase;letter-spacing:1.1px;opacity:.72}.header-title{font:900 20px var(--font-display);text-transform:uppercase}
-.header-logout{margin-left:auto;border:1px solid rgba(255,255,255,.35);background:rgba(0,0,0,.15);color:#fff;border-radius:9px;padding:8px 10px;font:700 13px var(--font-body)}
+.header-actions{margin-left:auto;display:flex;align-items:center;gap:7px}.header-logout,.header-return{border:1px solid rgba(255,255,255,.35);background:rgba(0,0,0,.15);color:#fff;border-radius:9px;padding:8px 10px;font:700 13px var(--font-body);white-space:nowrap}.header-return{background:rgba(255,255,255,.12)}
 
 /* briefing */
 #briefing-screen{z-index:30;background:linear-gradient(180deg,#e9efe9 0,#f7f8f7 100%)}.briefing-scroll{height:calc(100% - 84px);overflow:auto;padding:18px 14px calc(30px + env(safe-area-inset-bottom))}
