@@ -31,6 +31,7 @@ const state = {
   submitted: false,
   toastTimer: null,
   loginDebugText: '',
+  briefingReturnToMap: false,
 };
 
 window.addEventListener('DOMContentLoaded', initializeApp);
@@ -320,10 +321,11 @@ async function loadScenario() {
       return;
     }
 
-    const participation = safeStorageGet(participationKey());
-    if (participation === 'yes') await enterMap();
-    else if (participation === 'no') showOnly('decline-screen');
-    else showOnly('briefing-screen');
+    // Always present the full incident briefing after authentication. Participation
+    // is still cached so confirming the same answer does not create duplicate rows.
+    state.briefingReturnToMap = false;
+    updateBriefingNavigation(false);
+    showOnly('briefing-screen');
   } catch (error) {
     showOnly('login-screen');
     document.getElementById('login-error').textContent = error.message || 'Unable to load the exercise.';
@@ -361,18 +363,30 @@ async function respondToBriefing(responseValue) {
   error.textContent = '';
 
   try {
-    const response = await fetch('/api/participation', {
-      method: 'POST', credentials: 'same-origin', cache: 'no-store',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ response: responseValue }),
-    });
-    const data = await parseJson(response);
-    if (response.status === 401) return expireLocalSession();
-    if (!response.ok) throw new Error(data.error || 'Your response could not be saved.');
+    const priorResponse = safeStorageGet(participationKey());
 
-    safeStorageSet(participationKey(), responseValue);
-    if (responseValue === 'no') showOnly('decline-screen');
-    else await enterMap();
+    // Do not append another participation row when the member is merely
+    // reviewing the briefing and confirms the same response again.
+    if (priorResponse !== responseValue) {
+      const response = await fetch('/api/participation', {
+        method: 'POST', credentials: 'same-origin', cache: 'no-store',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ response: responseValue }),
+      });
+      const data = await parseJson(response);
+      if (response.status === 401) return expireLocalSession();
+      if (!response.ok) throw new Error(data.error || 'Your response could not be saved.');
+      safeStorageSet(participationKey(), responseValue);
+    }
+
+    state.briefingReturnToMap = false;
+    updateBriefingNavigation(false);
+    if (responseValue === 'no') {
+      stopLocationWatch();
+      showOnly('decline-screen');
+    } else {
+      await enterMap();
+    }
   } catch (requestError) {
     error.textContent = requestError.message || 'Your response could not be saved.';
   } finally {
@@ -620,6 +634,30 @@ function openInstructions() {
   document.getElementById('instructions-modal').classList.remove('hidden');
 }
 function closeInstructions() { document.getElementById('instructions-modal').classList.add('hidden'); }
+
+function showBriefingFromMap() {
+  state.briefingReturnToMap = true;
+  updateBriefingNavigation(true);
+  closeGeiger();
+  document.getElementById('readings-panel')?.classList.add('hidden');
+  showOnly('briefing-screen');
+}
+
+function returnToMapFromBriefing() {
+  if (!state.map) {
+    enterMap();
+    return;
+  }
+  state.briefingReturnToMap = false;
+  updateBriefingNavigation(false);
+  showOnly('map-screen');
+  setTimeout(() => state.map?.invalidateSize({ pan: false }), 60);
+}
+
+function updateBriefingNavigation(showBackButton) {
+  document.getElementById('briefing-back-button')?.classList.toggle('hidden', !showBackButton);
+}
+
 function toggleBriefingReview() { document.getElementById('briefing-review-modal').classList.toggle('hidden'); }
 function closeModalFromBackdrop(event, id) { if (event.target.id === id) document.getElementById(id).classList.add('hidden'); }
 
