@@ -394,6 +394,11 @@ async function enterMap() {
 
 async function initializeMap() {
   state.map = L.map('map', { zoomControl: false, preferCanvas: true, minZoom: 10, maxZoom: 20 });
+
+  // Establish Leaflet's projection immediately. Vector layers can be queued before
+  // the first view is set, but map-dependent methods such as Circle#getBounds()
+  // are unsafe until the map has a center and zoom.
+  state.map.setView([33.1507, -96.8236], 12, { animate: false });
   createMapPanes();
   L.control.zoom({ position: 'bottomleft' }).addTo(state.map);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -452,10 +457,16 @@ function renderExerciseLayers() {
   if (!disasterBounds?.isValid()) throw new Error('The disaster-area polygon did not produce valid map bounds.');
 
   state.exerciseBounds = L.latLngBounds(disasterBounds);
-  state.scenario.pois.forEach(addPoiToMap);
-  state.poiLayers.forEach(({ circle }) => {
-    const circleBounds = circle.getBounds();
-    if (circleBounds?.isValid()) state.exerciseBounds.extend(circleBounds);
+  state.scenario.pois.forEach((poi) => {
+    addPoiToMap(poi);
+
+    // Calculate the POI-radius bounds directly from coordinates. This does not
+    // depend on Leaflet having projected or attached the circle layer yet.
+    const radiusMeters = Number(poi.radiusMeters);
+    if (Number.isFinite(radiusMeters) && radiusMeters > 0) {
+      const circleBounds = L.latLng(poi.latitude, poi.longitude).toBounds(radiusMeters * 2);
+      if (circleBounds.isValid()) state.exerciseBounds.extend(circleBounds);
+    }
   });
 
   state.disasterLayer.bringToFront?.();
